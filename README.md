@@ -32,7 +32,7 @@ For the underlying immutable radix trees, see [go-immutable-radix](https://githu
 Documentation
 =============
 
-The full documentation is available on [Godoc](http://godoc.org/github.com/hashicorp/go-memdb).
+The full documentation is available on [Godoc](http://godoc.org/github.com/lggomez/go-memdb).
 
 Example
 =======
