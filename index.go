@@ -293,6 +293,7 @@ type NestedStringSliceFieldIndex struct {
 }
 
 func (s *NestedStringSliceFieldIndex) FromObject(obj interface{}) (bool, [][]byte, error) {
+	var vals [][]byte
 	var v, fv reflect.Value
 	fieldTokens := strings.Split(s.Field, ".")
 	objPivot := obj
@@ -317,21 +318,8 @@ func (s *NestedStringSliceFieldIndex) FromObject(obj interface{}) (bool, [][]byt
 		visited[v] = struct{}{}
 		v = reflect.Indirect(v) // Dereference the pointer if any
 
-		fv = v.FieldByName(field)
-
-		// Validation checks
-		isPtr := fv.Kind() == reflect.Ptr
-		fv = reflect.Indirect(fv)
-		if !isPtr && !fv.IsValid() {
-			return false, nil,
-				fmt.Errorf("field '%s' for %#v is invalid (isPtr:%v) ",
-					strings.Join(fieldTokens[:i+1], "."),
-					objPivot,
-					isPtr)
-		}
-
-		// We found the slice. Start the traversal
-		if i == len(fieldTokens)-2 {
+		// We are at the slice.Field level. Check and traverse the slice
+		if i == len(fieldTokens)-1 {
 			// Validate expected slice type
 			if !(fv.Kind() == reflect.Slice || fv.Kind() == reflect.Array) {
 				return false, nil,
@@ -342,7 +330,7 @@ func (s *NestedStringSliceFieldIndex) FromObject(obj interface{}) (bool, [][]byt
 			}
 
 			length := fv.Len()
-			vals := make([][]byte, 0, length)
+			vals = make([][]byte, 0, length)
 
 			for j := 0; j < length; j++ {
 				elem := fv.Index(j)
@@ -350,6 +338,9 @@ func (s *NestedStringSliceFieldIndex) FromObject(obj interface{}) (bool, [][]byt
 				// Validation checks
 				isPtr := elem.Kind() == reflect.Ptr
 				elem = reflect.Indirect(elem)
+
+				elem = elem.FieldByName(field)
+
 				if !isPtr && !elem.IsValid() {
 					return false, nil,
 						fmt.Errorf("field '%s[%v]' for %#v is invalid (isPtr:%v) ",
@@ -373,16 +364,29 @@ func (s *NestedStringSliceFieldIndex) FromObject(obj interface{}) (bool, [][]byt
 			if len(vals) == 0 {
 				return false, nil, nil
 			}
-		}
+		} else {
+			fv = v.FieldByName(field)
 
-		if isPtr && !fv.IsValid() {
-			return true, [][]byte{}, nil
+			// Validation checks
+			isPtr := fv.Kind() == reflect.Ptr
+			fv = reflect.Indirect(fv)
+			if !isPtr && !fv.IsValid() {
+				return false, nil,
+					fmt.Errorf("field '%s' for %#v is invalid (isPtr:%v) ",
+						strings.Join(fieldTokens[:i+1], "."),
+						objPivot,
+						isPtr)
+			}
+
+			if isPtr && !fv.IsValid() {
+				return true, [][]byte{}, nil
+			}
 		}
 
 		objPivot = fv.Interface()
 	}
 
-	return true, [][]byte{}, nil
+	return true, vals, nil
 }
 
 func (s *NestedStringSliceFieldIndex) FromArgs(args ...interface{}) ([]byte, error) {
