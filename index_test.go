@@ -30,6 +30,8 @@ type TestObject struct {
 	QuxintEmpty []int
 	Zod         map[string]string
 	ZodEmpty    map[string]string
+	ZodKV       []TestKeyValueObject
+	ZodKVEmpty  []TestKeyValueObject
 	Int         int
 	Int8        int8
 	Int16       int16
@@ -57,32 +59,30 @@ type C struct {
 }
 
 type Nested struct {
-	A          A
-	ASlice     []A
-	ID         string
-	Foo        string
-	Fu         *string
-	Boo        *string
-	Bar        int
-	Baz        string
-	Bam        *bool
-	Empty      string
-	Qux        []string
-	QuxEmpty   []string
-	Zod        map[string]string
-	ZodEmpty   map[string]string
-	ZodKV      []TestKeyValueObject
-	ZodKVEmpty []TestKeyValueObject
-	Int        int
-	Int8       int8
-	Int16      int16
-	Int32      int32
-	Int64      int64
-	Uint       uint
-	Uint8      uint8
-	Uint16     uint16
-	Uint32     uint32
-	Uint64     uint64
+	A        A
+	ASlice   []A
+	ID       string
+	Foo      string
+	Fu       *string
+	Boo      *string
+	Bar      int
+	Baz      string
+	Bam      *bool
+	Empty    string
+	Qux      []string
+	QuxEmpty []string
+	Zod      map[string]string
+	ZodEmpty map[string]string
+	Int      int
+	Int8     int8
+	Int16    int16
+	Int32    int32
+	Int64    int64
+	Uint     uint
+	Uint8    uint8
+	Uint16   uint16
+	Uint32   uint32
+	Uint64   uint64
 }
 
 func String(s string) *string {
@@ -105,6 +105,20 @@ func testObj() *TestObject {
 			"Role":          "Server",
 			"instance_type": "m3.medium",
 			"":              "asdf",
+		},
+		ZodKV: []TestKeyValueObject{
+			TestKeyValueObject{
+				Key:   "Key1",
+				Value: "Value1",
+			},
+			TestKeyValueObject{
+				Key:   "Key2",
+				Value: "Value2",
+			},
+			TestKeyValueObject{
+				Key:   "Key3",
+				Value: "Value3",
+			},
 		},
 		Int:    int(1),
 		Int8:   int8(-1 << 7),
@@ -135,20 +149,6 @@ func testNested() *Nested {
 			"Role":          "Server",
 			"instance_type": "m3.medium",
 			"":              "asdf",
-		},
-		ZodKV: []TestKeyValueObject{
-			TestKeyValueObject{
-				Key:   "Key1",
-				Value: "Value1",
-			},
-			TestKeyValueObject{
-				Key:   "Key2",
-				Value: "Value2",
-			},
-			TestKeyValueObject{
-				Key:   "Key3",
-				Value: "Value3",
-			},
 		},
 		Int:    int(1),
 		Int8:   int8(-1 << 7),
@@ -823,7 +823,7 @@ func TestIntSliceFieldIndex_FromArgs(t *testing.T) {
 
 func TestNestedStringSliceFieldIndex_FromObject(t *testing.T) {
 	// Helper function to put the result in a deterministic order
-	fromObjectSorted := func(index MultiIndexer, obj *Nested) (bool, []string, error) {
+	fromObjectSorted := func(index MultiIndexer, obj *TestObject) (bool, []string, error) {
 		ok, v, err := index.FromObject(obj)
 		var vals []string
 		for _, s := range v {
@@ -833,7 +833,7 @@ func TestNestedStringSliceFieldIndex_FromObject(t *testing.T) {
 		return ok, vals, err
 	}
 
-	obj := testNested()
+	obj := testObj()
 
 	indexer := NestedStringSliceFieldIndex{"ZodKV.Key", false}
 	ok, vals, err := fromObjectSorted(&indexer, obj)
