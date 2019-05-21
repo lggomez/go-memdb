@@ -10,6 +10,11 @@ import (
 	"testing"
 )
 
+type TestKeyValueObject struct {
+	Key   string
+	Value string
+}
+
 type TestObject struct {
 	ID          string
 	Foo         string
@@ -52,30 +57,32 @@ type C struct {
 }
 
 type Nested struct {
-	A        A
-	ASlice   []A
-	ID       string
-	Foo      string
-	Fu       *string
-	Boo      *string
-	Bar      int
-	Baz      string
-	Bam      *bool
-	Empty    string
-	Qux      []string
-	QuxEmpty []string
-	Zod      map[string]string
-	ZodEmpty map[string]string
-	Int      int
-	Int8     int8
-	Int16    int16
-	Int32    int32
-	Int64    int64
-	Uint     uint
-	Uint8    uint8
-	Uint16   uint16
-	Uint32   uint32
-	Uint64   uint64
+	A          A
+	ASlice     []A
+	ID         string
+	Foo        string
+	Fu         *string
+	Boo        *string
+	Bar        int
+	Baz        string
+	Bam        *bool
+	Empty      string
+	Qux        []string
+	QuxEmpty   []string
+	Zod        map[string]string
+	ZodEmpty   map[string]string
+	ZodKV      []TestKeyValueObject
+	ZodKVEmpty []TestKeyValueObject
+	Int        int
+	Int8       int8
+	Int16      int16
+	Int32      int32
+	Int64      int64
+	Uint       uint
+	Uint8      uint8
+	Uint16     uint16
+	Uint32     uint32
+	Uint64     uint64
 }
 
 func String(s string) *string {
@@ -128,6 +135,20 @@ func testNested() *Nested {
 			"Role":          "Server",
 			"instance_type": "m3.medium",
 			"":              "asdf",
+		},
+		ZodKV: []TestKeyValueObject{
+			TestKeyValueObject{
+				Key:   "Key1",
+				Value: "Value1",
+			},
+			TestKeyValueObject{
+				Key:   "Key2",
+				Value: "Value2",
+			},
+			TestKeyValueObject{
+				Key:   "Key3",
+				Value: "Value3",
+			},
 		},
 		Int:    int(1),
 		Int8:   int8(-1 << 7),
@@ -797,6 +818,102 @@ func TestIntSliceFieldIndex_FromArgs(t *testing.T) {
 	valInt := binary.LittleEndian.Uint32(val)
 	if valInt != 42 {
 		t.Fatalf("expected 42")
+	}
+}
+
+func TestNestedStringSliceFieldIndex_FromObject(t *testing.T) {
+	// Helper function to put the result in a deterministic order
+	fromObjectSorted := func(index MultiIndexer, obj *Nested) (bool, []string, error) {
+		ok, v, err := index.FromObject(obj)
+		var vals []string
+		for _, s := range v {
+			vals = append(vals, string(s))
+		}
+		sort.Strings(vals)
+		return ok, vals, err
+	}
+
+	obj := testNested()
+
+	indexer := NestedStringSliceFieldIndex{"ZodKV.Key", false}
+	ok, vals, err := fromObjectSorted(&indexer, obj)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if len(vals) != 3 {
+		t.Fatalf("bad result length of %d", len(vals))
+	}
+	if string(vals[0]) != "Key1\x00" {
+		t.Fatalf("bad: %s", vals[0])
+	}
+	if string(vals[1]) != "Key2\x00" {
+		t.Fatalf("bad: %s", vals[1])
+	}
+	if !ok {
+		t.Fatalf("should be ok")
+	}
+
+	lower := NestedStringSliceFieldIndex{"ZodKV.Key", true}
+	ok, vals, err = fromObjectSorted(&lower, obj)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if len(vals) != 3 {
+		t.Fatalf("bad result length of %d", len(vals))
+	}
+	if string(vals[0]) != "key1\x00" {
+		t.Fatalf("bad: %s", vals[0])
+	}
+	if string(vals[1]) != "key2\x00" {
+		t.Fatalf("bad: %s", vals[1])
+	}
+	if !ok {
+		t.Fatalf("should be ok")
+	}
+
+	badField := NestedStringSliceFieldIndex{"NA", true}
+	ok, _, err = badField.FromObject(obj)
+	if err == nil {
+		t.Fatalf("should get error")
+	}
+
+	emptyField := NestedStringSliceFieldIndex{"ZodKVEmpty.Key", true}
+	ok, _, err = emptyField.FromObject(obj)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if ok {
+		t.Fatalf("should not ok")
+	}
+}
+
+func TestNestedStringSliceFieldIndex_FromArgs(t *testing.T) {
+	indexer := NestedStringSliceFieldIndex{"Zod.Key", false}
+	_, err := indexer.FromArgs()
+	if err == nil {
+		t.Fatalf("should get err")
+	}
+
+	_, err = indexer.FromArgs(42)
+	if err == nil {
+		t.Fatalf("should get err")
+	}
+
+	val, err := indexer.FromArgs("Key1")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if string(val) != "Key1\x00" {
+		t.Fatalf("bad: %v", string(val))
+	}
+
+	lower := NestedStringSliceFieldIndex{"ZodKV.Key", true}
+	val, err = lower.FromArgs("Key1")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if string(val) != "key1\x00" {
+		t.Fatalf("bad: %v", string(val))
 	}
 }
 

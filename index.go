@@ -385,6 +385,129 @@ func (s *NestedStringFieldIndex) PrefixFromArgs(args ...interface{}) ([]byte, er
 	return val, nil
 }
 
+// NestedStringSliceFieldIndex is used to extract a nested field from an object
+// slice using reflection and builds an index on that field.
+//
+// It uses a similar aproach to NestedStringFieldIndex but semantically it will
+// behave like a projection of the given object field from all of the slice elements
+type NestedStringSliceFieldIndex struct {
+	Field     string
+	Lowercase bool
+}
+
+func (s *NestedStringSliceFieldIndex) FromObject(obj interface{}) (bool, [][]byte, error) {
+	var vals [][]byte
+	var v, fv reflect.Value
+	fieldTokens := strings.Split(s.Field, ".")
+	objPivot := obj
+	visited := map[reflect.Value]struct{}{}
+
+	// Field accesor must be, at a minimum, composed of tokens SliceProp.Field
+	if len(fieldTokens) < 2 {
+		return false, nil,
+			fmt.Errorf("field '%s' for %#v is invalid (len(fieldTokens):%v) ",
+				s.Field,
+				objPivot,
+				len(fieldTokens))
+	}
+
+	// Traverse object to the correct field level
+	for i, field := range fieldTokens {
+		v = reflect.ValueOf(objPivot)
+		if _, ok := visited[v]; ok {
+			// Break object cycles
+			break
+		}
+		visited[v] = struct{}{}
+		v = reflect.Indirect(v) // Dereference the pointer if any
+
+		// We are at the slice.Field level. Check and traverse the slice
+		if i == len(fieldTokens)-1 {
+			// Validate expected slice type
+			if !(fv.Kind() == reflect.Slice || fv.Kind() == reflect.Array) {
+				return false, nil,
+					fmt.Errorf("field '%s' for %#v is invalid (isSlice/isArray:%v) ",
+						strings.Join(fieldTokens[:i+1], "."),
+						objPivot,
+						false)
+			}
+
+			length := fv.Len()
+			vals = make([][]byte, 0, length)
+
+			for j := 0; j < length; j++ {
+				elem := fv.Index(j)
+
+				// Validation checks
+				isPtr := elem.Kind() == reflect.Ptr
+				elem = reflect.Indirect(elem)
+
+				elem = elem.FieldByName(field)
+
+				if !isPtr && !elem.IsValid() {
+					return false, nil,
+						fmt.Errorf("field '%s[%v]' for %#v is invalid (isPtr:%v) ",
+							strings.Join(fieldTokens[:i+1], "."),
+							j,
+							elem,
+							isPtr)
+				}
+
+				val := elem.String()
+
+				if s.Lowercase {
+					val = strings.ToLower(val)
+				}
+
+				// Add the null character as a terminator
+				val += "\x00"
+				vals = append(vals, []byte(val))
+			}
+
+			if len(vals) == 0 {
+				return false, nil, nil
+			}
+		} else {
+			fv = v.FieldByName(field)
+
+			// Validation checks
+			isPtr := fv.Kind() == reflect.Ptr
+			fv = reflect.Indirect(fv)
+			if !isPtr && !fv.IsValid() {
+				return false, nil,
+					fmt.Errorf("field '%s' for %#v is invalid (isPtr:%v) ",
+						strings.Join(fieldTokens[:i+1], "."),
+						objPivot,
+						isPtr)
+			}
+
+			if isPtr && !fv.IsValid() {
+				return true, [][]byte{}, nil
+			}
+		}
+
+		objPivot = fv.Interface()
+	}
+
+	return true, vals, nil
+}
+
+func (s *NestedStringSliceFieldIndex) FromArgs(args ...interface{}) ([]byte, error) {
+	if len(args) != 1 {
+		return nil, fmt.Errorf("must provide only a single argument")
+	}
+	arg, ok := args[0].(string)
+	if !ok {
+		return nil, fmt.Errorf("argument must be a string: %#v", args[0])
+	}
+	if s.Lowercase {
+		arg = strings.ToLower(arg)
+	}
+	// Add the null character as a terminator
+	arg += "\x00"
+	return []byte(arg), nil
+}
+
 // IntFieldIndex is used to extract an int field from an object using
 // reflection and builds an index on that field.
 type IntFieldIndex struct {
